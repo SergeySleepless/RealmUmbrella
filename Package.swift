@@ -5,9 +5,6 @@ import PackageDescription
 
 let package = Package(
     name: "RealmUmbrella",
-    platforms: [
-        .iOS(.v13)
-    ],
     products: [
         .library(
             name: "RealmUmbrella",
