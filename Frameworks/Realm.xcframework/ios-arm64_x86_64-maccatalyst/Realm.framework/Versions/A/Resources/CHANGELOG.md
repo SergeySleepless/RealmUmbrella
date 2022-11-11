@@ -1,3 +1,235 @@
+10.32.3 Release notes (2022-11-10)
+=============================================================
+
+### Fixed
+
+* Fix name lookup errors when importing Realm Swift built in library evolution
+  mode (([#8014](https://github.com/realm/realm-swift/issues/8014)).
+* The prebuilt watchOS library in the objective-c release package was missing
+  an arm64 slice. The Swift release package was uneffected
+  ([PR #8016](https://github.com/realm/realm-swift/pull/8016)).
+* Fix issue where `RLMUserAPIKey.key`/`UserAPIKey.key` incorrectly returned the name of the API
+  key instead of the key itself. ([#8021](https://github.com/realm/realm-swift/issues/8021), since v10.0.0)
+
+### Compatibility
+
+* Realm Studio: 11.0.0 or later.
+* APIs are backwards compatible with all previous releases in the 10.x.y series.
+* Carthage release for Swift is built with Xcode 14.1.
+* CocoaPods: 1.10 or later.
+* Xcode: 13.1-14.1.
+
+10.32.2 Release notes (2022-11-01)
+=============================================================
+
+Switch to building the Carthage release with Xcode 14.1.
+
+### Fixed
+
+* Fix linker errors when building a release build with Xcode 14.1 when
+ installing via SPM ([#7995](https://github.com/realm/realm-swift/issues/7995)).
+
+### Compatibility
+
+* Realm Studio: 11.0.0 or later.
+* APIs are backwards compatible with all previous releases in the 10.x.y series.
+* Carthage release for Swift is built with Xcode 14.1.
+* CocoaPods: 1.10 or later.
+* Xcode: 13.1-14.1.
+
+10.32.1 Release notes (2022-10-25)
+=============================================================
+
+### Enhancements
+
+* Improve performance of client reset with automatic recovery and converting
+  top-level tables into embedded tables ([Core #5897](https://github.com/realm/realm-core/pull/5897)).
+* `Realm.Error` is now a typealias for `RLMError` rather than a
+  manually-defined version of what the automatic bridging produces. This should
+  have no effect on existing working code, but the manual definition was
+  missing a few things supplied by the automatic bridging.
+* Some sync errors sent by the server include a link to the server-side logs
+  associated with that error. This link is now exposed in the `serverLogURL`
+  property on `SyncError` (or `RLMServerLogURLKey` userInfo field when using NSError).
+
+### Fixed
+
+* Many sync and app errors were reported using undocumented internal error
+  codes and/or domains and could not be progammatically handled. Some notable
+  things which now have public error codes instead of unstable internal ones:
+  - `Realm.Error.subscriptionFailed`: The server rejected a flexible sync subscription.
+  - `AppError.invalidPassword`: A login attempt failed due to a bad password.
+  - `AppError.accountNameInUse`: A registration attempt failed due to the account name being in use.
+  - `AppError.httpRequestFailed`: A HTTP request to Atlas App Services
+    completed with an error HTTP code. The failing code is available in the
+    `httpStatusCode` property.
+  - Many other less common error codes have been added to `AppError`.
+  - All sync errors other than `SyncError.clientResetError` reported incorrect
+    error codes.
+  (since v10.0.0).
+* `UserAPIKey.objectId` was incorrectly bridged to Swift as `RLMObjectId` to
+  `ObjectId`. This may produce warnings about an unneccesary cast if you were
+  previously casting it to the correct type (since v10.0.0).
+* Fixed an assertion failure when observing change notifications on a sectioned
+  result, if the first modification was to a linked property that did not cause
+  the state of the sections to change.
+  ([Core #5912](https://github.com/realm/realm-core/issues/5912),
+  since the introduction of sectioned results in v10.29.0)
+* Fix a use-after-free if the last external reference to an encrypted
+  synchronized Realm was closed between when a client reset error was received
+  and when the download of the new Realm began.
+  ([Core #5949](https://github.com/realm/realm-core/pull/5949), since 10.28.4).
+* Fix an assertion failure during client reset with recovery when recovering
+  a list operation on an embedded object that has a link column in the path
+  prefix to the list from the top level object.
+  ([Core #5957](https://github.com/realm/realm-core/issues/5957),
+  since introduction of automatic recovery in v10.32.0).
+* Creating a write transaction which is rejected by the server due to it
+  exceeding the maximum transaction size now results in a client reset error
+  instead of synchronization breaking and becoming stuck forever
+  ([Core #5209](https://github.com/realm/realm-core/issues/5209), since v10).
+* Opening an unencrypted file with an encryption key would sometimes report a
+  misleading error message that indicated that the problem was something other
+  than a decryption failure ([Core #5915](https://github.com/realm/realm-core/pull/5915), since 0.89.0).
+* Fix a rare deadlock which could occur when closing a synchronized Realm
+  immediately after committing a write transaction when the sync worker thread
+  has also just finished processing a changeset from the server
+  ([Core #5948](https://github.com/realm/realm-core/pull/5948)).
+
+### Compatibility
+
+* Realm Studio: 11.0.0 or later.
+* APIs are backwards compatible with all previous releases in the 10.x.y series.
+* Carthage release for Swift is built with Xcode 14.0.1.
+* CocoaPods: 1.10 or later.
+* Xcode: 13.1-14.1.
+
+### Internal
+
+* Upgraded realm-core from 12.9.0 to 12.11.0.
+
+10.32.0 Release notes (2022-10-10)
+=============================================================
+
+### Enhancements
+
+* Add `.recoverUnsyncedChanges` (`RLMClientResetModeRecoverUnsyncedChanges`) and
+`.recoverOrDiscardUnsyncedChanges` (`RLMClientResetModeRecoverOrDiscardUnsyncedChanges`) behaviors to `ClientResetMode` (`RLMClientResetMode`).
+  - The newly added recover modes function by downloading a realm which reflects the latest
+    state of the server after a client reset. A recovery process is run locally in an
+    attempt to integrate the server state with any local changes from before the
+    client reset occurred.
+    The changes are integrated with the following rules:
+    1. Objects created locally that were not synced before client reset, will be integrated.
+    2. If an object has been deleted on the server, but was modified on the client, the delete takes precedence and the update is discarded.
+    3. If an object was deleted on the client, but not the server, then the client delete instruction is applied.
+    4. In the case of conflicting updates to the same field, the client update is applied.
+  - The client reset process will fallback to `ClientResetMode.discardUnsyncedChanges` if the recovery process fails in `.recoverOrDiscardUnsyncedChanges`.
+  - The client reset process will fallback to `ClientResetMode.manual` if the recovery process fails in `.recoverUnsyncedChanges`.
+  - The two new swift recovery modes support client reset callbacks: `.recoverUnsyncedChanges(beforeReset: ((Realm) -> Void)? = nil, afterReset: ((Realm, Realm) -> Void)? = nil)`.
+  - The two new Obj-C recovery modes support client reset callbacks in `notifyBeforeReset`
+    and `notifyAfterReset`for both `[RLMUser configurationWithPartitionValue]` and `[RLMUser flexibleSyncConfigurationWithClientResetMode]`
+    For more detail on client reset callbacks, see `ClientResetMode`, `RLMClientResetBeforeBlock`,
+    `RLMClientResetAfterBlock`, and the 10.25.0 changelog entry.
+* Add two new additional interfaces to define a manual client reset handler:
+  - Add a manual callback handler to `ClientResetMode.manual` -> `ClientResetMode.manual(ErrorReportingBlock? = nil)`.
+  - Add the `RLMSyncConfiguration.manualClientResetHandler` property (type `RLMSyncErrorReportingBlock`).
+  - These error reporting blocks are invoked in the event of a `RLMSyncErrorClientResetError`.
+  - See `ErrorReportingBlock` (`RLMSyncErrorReportingBlock`), and `ClientResetInfo` for more detail.
+  - Previously, manual client resets were handled only through the `SyncManager.ErrorHandler`. You have the
+    option, but not the requirement, to define manual reset handler in these interfaces.
+    Otherwise, the `SyncManager.ErrorHandler` is still invoked during the manual client reset process.
+  - These new interfaces are only invoked during a `RLMSyncErrorClientResetError`. All other sync errors
+    are still handled in the `SyncManager.ErrorHandler`.
+  - See 'Breaking Changes' for information how these interfaces interact with an already existing
+    `SyncManager.ErrorHandler`.
+
+### Breaking Changes
+
+* The default `clientResetMode` (`RLMClientResetMode`) is switched from `.manual` (`RLMClientResetModeManual`)
+  to `.recoverUnsyncedChanges` (`RLMClientResetModeRecoverUnsyncedChanges`).
+  - If you are currently using `.manual` and continue to do so, the only change
+    you must explicitly make is designating manual mode in
+    your `Realm.Configuration.SyncConfiguration`s, since they will now default to `.recoverUnsyncedChanges`.
+  - You may choose to define your manual client reset handler in the newly
+    introduced `manual(ErrorReportingBlock? = nil)`
+    or `RLMSyncConfiguration.manualClientResetHandler`, but this is not required.
+    The `SyncManager.errorHandler` will still be invoked during a client reset if
+    no callback is passed into these new interfaces.
+
+### Deprecations
+
+* `ClientResetMode.discardLocal` is deprecated in favor of `ClientResetMode.discardUnsyncedChanges`.
+  The reasoning is that the name better reflects the effect of this reset mode. There is no actual
+  difference in behavior.
+
+### Compatibility
+
+* Realm Studio: 11.0.0 or later.
+* APIs are backwards compatible with all previous releases in the 10.x.y series.
+* Carthage release for Swift is built with Xcode 14.0.1.
+* CocoaPods: 1.10 or later.
+* Xcode: 13.1-14.1.
+
+10.31.0 Release notes (2022-10-05)
+=============================================================
+
+The prebuilt binary for Carthage is now build with Xcode 14.0.1.
+
+### Enhancements
+
+* Cut the runtime of aggregate operations on large dictionaries in half
+  ([Core #5864](https://github.com/realm/realm-core/pull/5864)).
+* Improve performance of aggregate operations on collections of objects by 2x
+  to 10x ([Core #5864](https://github.com/realm/realm-core/pull/5864)).
+  Greatly improve the performance of sorting or distincting a Dictionary's keys
+  or values. The most expensive operation is now performed O(log N) rather than
+  O(N log N) times, and large Dictionaries can see upwards of 99% reduction in
+  time to sort. ([Core #5166](https://github.com/realm/realm-core/pulls/5166))
+* Add support for changing the deployment location for Atlas Apps. Previously
+  this was assumed to be immutable ([Core #5648](https://github.com/realm/realm-core/issues/5648)).
+* The sync client will now yield the write lock to other threads which are
+  waiting to perform a write transaction even if it still has remaining work to
+  do, rather than always applying all changesets received from the server even
+  when other threads are trying to write. ([Core #5844](https://github.com/realm/realm-core/pull/5844)).
+* The sync client no longer writes an unused temporary copy of the changesets
+  received from the server to the Realm file ([Core #5844](https://github.com/realm/realm-core/pull/5844)).
+
+### Fixed
+
+* Setting a `List` property with `Results` no longer throws an unrecognized
+  selector exception (since 10.8.0-beta.2)
+* `RLMProgressNotificationToken` and `ProgressNotificationToken` now hold a
+  strong reference to the sync session, keeping it alive until the token is
+  deallocated or invalidated, as the other notification tokens do.
+  ([#7831](https://github.com/realm/realm-swift/issues/7831), since v2.3.0).
+* Results permitted some nonsensical aggregate operations on column types which
+  do not make sense to aggregate, giving garbage results rather than reporting
+  an error ([Core #5876](https://github.com/realm/realm-core/pull/5876), since v5.0.0).
+* Upserting a document in a Mongo collection would crash if the document's id
+  type was anything other than ObjectId (since v10.0.0).
+* Fix a use-after-free when a sync session is closed and the app is destroyed
+  at the same time ([Core #5752](https://github.com/realm/realm-core/issues/5752),
+  since v10.19.0).
+
+### Deprecations
+
+* `RLMUpdateResult.objectId` has been deprecated in favor of
+  `RLMUpdateResult.documentId` to support reporting document ids which are not
+  object ids.
+
+### Compatibility
+
+* Realm Studio: 11.0.0 or later.
+* APIs are backwards compatible with all previous releases in the 10.x.y series.
+* Carthage release for Swift is built with Xcode 14.0.1.
+* CocoaPods: 1.10 or later.
+* Xcode: 13.1-14.1.
+
+### Internal
+
+* Upgraded realm-core from 12.7.0 to 12.9.0
+
 10.30.0 Release notes (2022-09-20)
 =============================================================
 
